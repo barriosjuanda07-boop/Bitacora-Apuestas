@@ -2,7 +2,7 @@
 
 Registro personal de apuestas deportivas: bankroll, ROI, acierto, rachas, caída máxima y desgloses por deporte y mercado. Busca partidos en ESPN y cierra sola las apuestas pendientes cuando termina el partido.
 
-**Página:** https://barriosjuanda07-boop.github.io/bitacora-apuestas/
+**Página:** https://barriosjuanda07-boop.github.io/Bitacora-Apuestas/
 
 ## Cómo funciona
 
