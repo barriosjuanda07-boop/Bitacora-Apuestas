@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0d1118">
+<title>Bitácora de Apuestas</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1118'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='%23f0b250' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: barra superior → KPIs → curva de bankroll + indicadores → desgloses → historial. Un solo tema oscuro, por elección. */
+:root{
+  --bg:#0d1118; --surface:#151b25; --surface-2:#1c2431; --line:#283142;
+  --text:#e6e9ef; --muted:#8a94a6; --accent:#f0b250; --accent-ink:#1a1306;
+  --win:#4fc08d; --loss:#ee6a6a; --pending:#74a7f7; --push:#9aa3b4; --live:#ff8a3d;
+  --font-display:"Sora","Segoe UI",system-ui,sans-serif;
+  --font-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --font-num:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --r:10px; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:15px;line-height:1.45}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3{font-family:var(--font-display);margin:0;text-wrap:balance;font-weight:600}
+.num{font-family:var(--font-num);font-variant-numeric:tabular-nums}
+.wrap{max-width:1240px;margin:0 auto;padding:20px 20px 60px;display:flex;flex-direction:column;gap:18px}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:14px;justify-content:space-between}
+.brand{display:flex;flex-direction:column;gap:2px}
+.brand h1{font-size:22px;letter-spacing:-.01em}
+.brand h1 span{color:var(--accent)}
+.sync{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.dot.ok{background:var(--win)} .dot.warn{background:var(--accent)}
+.linkbtn{border:0;background:none;color:var(--accent);cursor:pointer;padding:0;font-size:12.5px;text-decoration:underline}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.seg{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:3px}
+.seg button{border:0;background:transparent;padding:6px 11px;border-radius:6px;color:var(--muted);cursor:pointer;font-size:13.5px}
+.seg button[aria-pressed="true"]{background:var(--surface-2);color:var(--text)}
+.btn{border:1px solid var(--line);background:var(--surface);padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:500;font-size:14px;transition:background .15s,border-color .15s;white-space:nowrap}
+.btn:hover{background:var(--surface-2);border-color:#36415a}
+.btn:disabled{opacity:.55;cursor:default}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.danger{background:transparent;border-color:#5a2f35;color:var(--loss)}
+.btn.sm{padding:4px 9px;font-size:12.5px;border-radius:6px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi .lbl{font-size:12.5px;color:var(--muted)}
+.kpi .val{font-size:24px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .sub{font-size:12.5px;color:var(--muted)}
+.kpi.lead{border-color:#3b3424;background:linear-gradient(180deg,#1b1a17,var(--surface))}
+.pos{color:var(--win)} .neg{color:var(--loss)}
+
+.grid2{display:grid;grid-template-columns:2fr 1fr;gap:12px}
+.grid2b{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
+.panel-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.panel-h h2{font-size:15px}
+.panel-h .hint{font-size:12.5px;color:var(--muted)}
+.chartbox{position:relative;height:280px}
+.chartbox.sm{height:200px}
+.stats{display:flex;flex-direction:column}
+.stat{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.stat:last-child{border-bottom:0}
+.stat .k{color:var(--muted)}
+.stat .k small{display:block;font-size:11.5px;color:#677186}
+.stat .num{text-align:right}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-weight:500;color:var(--muted);font-size:12px;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.r,th.r{text-align:right}
+.bar{height:4px;border-radius:2px;background:var(--surface-2);margin-top:4px;overflow:hidden}
+.bar i{display:block;height:100%}
+
+.filters{display:flex;flex-wrap:wrap;gap:8px}
+.field{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:14px;min-width:0}
+.field:focus{border-color:var(--accent);outline:none}
+.tablewrap{overflow-x:auto;margin:0 -16px;padding:0 16px}
+.hist td{white-space:nowrap}
+.hist td.ev{white-space:normal;min-width:220px}
+.ev b{font-weight:500;display:block}
+.ev span{color:var(--muted);font-size:12.5px}
+.ev .live{color:var(--live);font-size:12px;font-weight:500}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:500;border:1px solid}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.p-ganada,.p-medio_ganada{color:var(--win);border-color:#2b5a45;background:#15261f}
+.p-perdida,.p-medio_perdida{color:var(--loss);border-color:#5a2f35;background:#2a171a}
+.p-pendiente{color:var(--pending);border-color:#2e4466;background:#152033}
+.p-nula{color:var(--push);border-color:#3a4252;background:#1b212b}
+.p-cashout{color:var(--accent);border-color:#5a4a28;background:#272013}
+.rowact{display:flex;gap:6px;justify-content:flex-end}
+.tag{font-size:10.5px;color:var(--accent);border:1px solid #5a4a28;border-radius:4px;padding:0 4px;margin-left:6px;vertical-align:middle;font-weight:500}
+.tag.auto{color:var(--pending);border-color:#2e4466}
+.empty{padding:28px 10px;text-align:center;color:var(--muted);display:flex;flex-direction:column;gap:12px;align-items:center}
+.empty p{margin:0;max-width:56ch}
+.more{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+.overlay{position:fixed;inset:0;background:rgba(5,8,12,.68);display:none;align-items:flex-start;justify-content:center;padding:32px 16px;overflow:auto;z-index:20}
+.overlay.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:14px;width:100%;max-width:660px;padding:20px;display:flex;flex-direction:column;gap:16px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.modal.sm{max-width:440px}
+.modal-h{display:flex;justify-content:space-between;align-items:center}
+.modal-h h2{font-size:18px}
+.x{border:0;background:transparent;color:var(--muted);font-size:22px;cursor:pointer;line-height:1;padding:4px 8px;border-radius:6px}
+.x:hover{background:var(--surface-2);color:var(--text)}
+.form{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+.f{display:flex;flex-direction:column;gap:5px;min-width:0}
+.f label,.flabel{font-size:12.5px;color:var(--muted)}
+.f .field{width:100%}
+.c2{grid-column:span 2}.c3{grid-column:span 3}.c4{grid-column:span 4}.c6{grid-column:span 6}
+.states{display:flex;flex-wrap:wrap;gap:6px}
+.states input{position:absolute;opacity:0;pointer-events:none}
+.states label{cursor:pointer;padding:6px 12px;border-radius:8px;border:1px solid var(--line);font-size:13.5px;color:var(--muted);background:var(--bg)}
+.states input:checked + label{color:var(--text);border-color:var(--accent);background:#221d12}
+.states input:focus-visible + label{outline:2px solid var(--accent);outline-offset:2px}
+.preview{background:var(--bg);border:1px dashed var(--line);border-radius:8px;padding:10px 12px;font-size:13.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 18px}
+.preview b{color:var(--text);font-weight:500}
+.modal-f{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.err{color:var(--loss);font-size:13px;min-height:1em}
+.note{font-size:13px;color:var(--muted);margin:0}
+.note code{font-family:var(--font-num);font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+
+/* Buscador de partidos */
+.search{position:relative}
+.search .field{width:100%;padding-left:34px}
+.search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);opacity:.6}
+.results{border:1px solid var(--line);border-radius:10px;background:var(--bg);max-height:300px;overflow:auto;margin-top:6px}
+.results:empty{display:none}
+.res{display:grid;grid-template-columns:1fr auto;gap:4px 12px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:transparent;padding:10px 12px;cursor:pointer}
+.res:last-child{border-bottom:0}
+.res:hover,.res:focus-visible{background:var(--surface-2)}
+.res .teams{display:flex;align-items:center;gap:8px;font-weight:500;min-width:0;flex-wrap:wrap}
+.res img,.match img{width:20px;height:20px;object-fit:contain}
+.res .meta{grid-column:1/-1;font-size:12px;color:var(--muted)}
+.res .st{font-size:12px;color:var(--muted);text-align:right}
+.res .st.in{color:var(--live)}
+.res-msg{padding:12px;font-size:13px;color:var(--muted)}
+.match{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #3b3424;background:#1b1a17;border-radius:10px;padding:10px 12px;flex-wrap:wrap}
+.match .mt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.match .mt b{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:500}
+.match .mt span{font-size:12px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:13px;cursor:pointer;background:var(--bg)}
+.chip input{accent-color:var(--accent)}
+
+.gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.gate .modal{max-width:440px;text-align:left}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface-2);border:1px solid var(--line);padding:10px 16px;border-radius:8px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:30;max-width:calc(100% - 32px)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+[hidden]{display:none!important}
+
+@media (max-width:1000px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.grid2,.grid2b{grid-template-columns:1fr}}
+@media (max-width:560px){
+  .wrap{padding:16px 16px 50px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kpi .val{font-size:20px}
+  .form{grid-template-columns:repeat(2,1fr)}
+  .c2,.c3,.c4,.c6{grid-column:span 2}
+  .chartbox{height:230px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="gate" id="gate" hidden>
+  <div class="modal">
+    <h2>Bitácora de <span style="color:var(--accent)">Apuestas</span></h2>
+    <p class="note">Inicia sesión con Google para ver tus apuestas. Se sincronizan entre tu celular y tu computadora.</p>
+    <button class="btn primary" type="button" id="btnLogin">Iniciar sesión con Google</button>
+    <div class="err" id="loginErr" role="alert"></div>
+  </div>
+</div>
+
+<div class="wrap" id="app">
+  <header class="top">
+    <div class="brand">
+      <h1>Bitácora de <span>Apuestas</span></h1>
+      <div class="sync"><i class="dot" id="syncDot"></i><span id="syncTxt">Cargando…</span><span id="userBox"></span></div>
+    </div>
+    <div class="actions">
+      <div class="seg" role="group" aria-label="Periodo">
+        <button type="button" data-period="7" aria-pressed="false">7 días</button>
+        <button type="button" data-period="30" aria-pressed="false">30 días</button>
+        <button type="button" data-period="mes" aria-pressed="false">Este mes</button>
+        <button type="button" data-period="todo" aria-pressed="true">Todo</button>
+      </div>
+      <button class="btn" type="button" id="btnConfig">Ajustes</button>
+      <button class="btn primary" type="button" id="btnNew">+ Nueva apuesta</button>
+    </div>
+  </header>
+
+  <section class="kpis" aria-label="Resumen">
+    <div class="kpi lead"><span class="lbl">Balance actual</span><span class="val num" id="kBalance">—</span><span class="sub" id="kBalanceSub">—</span></div>
+    <div class="kpi"><span class="lbl">Ganancia neta</span><span class="val num" id="kProfit">—</span><span class="sub" id="kProfitSub">—</span></div>
+    <div class="kpi"><span class="lbl">ROI (sobre lo apostado)</span><span class="val num" id="kRoi">—</span><span class="sub" id="kRoiSub">—</span></div>
+    <div class="kpi"><span class="lbl">Acierto</span><span class="val num" id="kWin">—</span><span class="sub" id="kWinSub">—</span></div>
+    <div class="kpi"><span class="lbl">En juego</span><span class="val num" id="kPend">—</span><span class="sub" id="kPendSub">—</span></div>
+  </section>
+
+  <section class="grid2">
+    <div class="panel">
+      <div class="panel-h"><h2>Evolución del bankroll</h2><span class="hint" id="chartHint"></span></div>
+      <div class="chartbox"><canvas id="chartBank" aria-label="Evolución del bankroll"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><h2>Indicadores</h2><span class="hint" id="periodLbl">Todo el historial</span></div>
+      <div class="stats" id="stats"></div>
+    </div>
+  </section>
+
+  <section class="grid2b">
+    <div class="panel"><div class="panel-h"><h2>Por deporte</h2></div><div id="byDeporte"></div></div>
+    <div class="panel"><div class="panel-h"><h2>Por mercado</h2></div><div id="byMercado"></div></div>
+    <div class="panel"><div class="panel-h"><h2>Ganancia por mes</h2></div><div class="chartbox sm"><canvas id="chartMonth" aria-label="Ganancia por mes"></canvas></div></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-h">
+      <h2>Historial</h2>
+      <div class="filters">
+        <input class="field" id="fSearch" type="search" placeholder="Buscar evento, selección, nota…" aria-label="Buscar">
+        <select class="field" id="fEstado" aria-label="Filtrar por estado">
+          <option value="">Todos los estados</option><option value="pendiente">Pendientes</option><option value="ganada">Ganadas</option>
+          <option value="perdida">Perdidas</option><option value="nula">Nulas</option><option value="cashout">Cash out</option>
+        </select>
+        <select class="field" id="fDeporte" aria-label="Filtrar por deporte"><option value="">Todos los deportes</option></select>
+        <button class="btn" type="button" id="btnCheck" title="Revisar resultados en ESPN">Revisar resultados</button>
+      </div>
+    </div>
+    <div class="tablewrap"><div id="hist"></div></div>
+    <div class="more" id="moreBox"></div>
+  </section>
+</div>
+
+<!-- Modal: apuesta -->
+<div class="overlay" id="ovBet" role="dialog" aria-modal="true" aria-labelledby="betTitle">
+  <form class="modal" id="betForm" novalidate autocomplete="off">
+    <div class="modal-h"><h2 id="betTitle">Nueva apuesta</h2><button class="x" type="button" data-close aria-label="Cerrar">×</button></div>
+
+    <div class="f" id="searchBox">
+      <label for="qMatch">Buscar partido por equipo</label>
+      <div class="search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input class="field" id="qMatch" type="search" placeholder="Ej. Barcelona, Lakers, Yankees…" aria-describedby="qHint">
+      </div>
+      <span class="note" id="qHint">Busca partidos de 3 días atrás a 10 días adelante en las ligas que elegiste en Ajustes.</span>
+      <div class="results" id="results" role="listbox" aria-label="Partidos encontrados"></div>
+    </div>
+    <div class="match" id="matchCard" hidden></div>
+
+    <div class="form">
+      <div class="f c2"><label for="iFecha">Fecha</label><input class="field" id="iFecha" type="date" required></div>
+      <div class="f c2"><label for="iDeporte">Deporte</label><input class="field" id="iDeporte" list="dlDeporte" placeholder="Fútbol"></div>
+      <div class="f c2"><label for="iCasa">Casa de apuestas</label><input class="field" id="iCasa" list="dlCasa" placeholder="Bet365"></div>
+      <div class="f c6"><label for="iEvento">Evento</label><input class="field" id="iEvento" placeholder="Real Madrid vs Barcelona" required></div>
+
+      <div class="f c2"><label for="iMercado">Mercado</label>
+        <select class="field" id="iMercado">
+          <option value="ganador">Ganador (1X2 / moneyline)</option>
+          <option value="doble">Doble oportunidad</option>
+          <option value="total">Más / menos (total)</option>
+          <option value="handicap">Hándicap / spread</option>
+          <option value="btts">Ambos anotan</option>
+          <option value="otro">Otro (jugador, córners, combinada…)</option>
+        </select></div>
+      <div class="f c2" id="pickBox"><label for="iPick">Pronóstico</label><select class="field" id="iPick"></select></div>
+      <div class="f c2" id="lineBox"><label for="iLinea">Línea</label><input class="field num" id="iLinea" type="number" step="0.25" inputmode="decimal" placeholder="2.5"></div>
+      <div class="f c6"><label for="iSel">Selección (texto)</label><input class="field" id="iSel" placeholder="Más de 2.5 goles"></div>
+
+      <div class="f c2"><label for="iTipo">Tipo</label>
+        <select class="field" id="iTipo"><option value="simple">Simple</option><option value="combinada">Combinada (parlay)</option><option value="en vivo">En vivo</option></select></div>
+      <div class="f c2"><label for="iCuota">Cuota</label><input class="field num" id="iCuota" type="number" step="any" inputmode="decimal" placeholder="1.85" required></div>
+      <div class="f c2"><label for="iFormato">Formato de cuota</label>
+        <select class="field" id="iFormato"><option value="dec">Decimal (1.85)</option><option value="us">Americana (−118 / +150)</option></select></div>
+      <div class="f c2"><label for="iMonto">Monto apostado</label><input class="field num" id="iMonto" type="number" step="any" min="0" inputmode="decimal" placeholder="100" required></div>
+      <div class="f c4"><span class="flabel">Resultado</span>
+        <div class="states" id="iEstado">
+          <input type="radio" name="estado" id="e1" value="pendiente" checked><label for="e1">Pendiente</label>
+          <input type="radio" name="estado" id="e2" value="ganada"><label for="e2">Ganada</label>
+          <input type="radio" name="estado" id="e3" value="perdida"><label for="e3">Perdida</label>
+          <input type="radio" name="estado" id="e4" value="nula"><label for="e4">Nula</label>
+          <input type="radio" name="estado" id="e5" value="cashout"><label for="e5">Cash out</label>
+        </div>
+      </div>
+      <div class="f c2" id="cashBox" hidden><label for="iCash">Recibido en cash out</label><input class="field num" id="iCash" type="number" step="any" min="0" inputmode="decimal"></div>
+      <div class="f c6"><label for="iNotas">Notas</label><textarea class="field" id="iNotas" rows="2" placeholder="Por qué entraste, contexto, lesiones, sensación…"></textarea></div>
+    </div>
+    <div class="preview" id="preview"></div>
+    <div class="err" id="betErr" role="alert"></div>
+    <div class="modal-f">
+      <button class="btn danger" type="button" id="btnDelInForm" hidden>Eliminar</button>
+      <span style="flex:1"></span>
+      <button class="btn" type="button" data-close>Cancelar</button>
+      <button class="btn primary" type="submit" id="btnSave">Guardar apuesta</button>
+    </div>
+  </form>
+</div>
+
+<!-- Modal: ajustes -->
+<div class="overlay" id="ovCfg" role="dialog" aria-modal="true" aria-labelledby="cfgTitle">
+  <form class="modal" id="cfgForm" novalidate>
+    <div class="modal-h"><h2 id="cfgTitle">Ajustes</h2><button class="x" type="button" data-close aria-label="Cerrar">×</button></div>
+    <div class="form">
+      <div class="f c2"><label for="cBank">Bankroll inicial</label><input class="field num" id="cBank" type="number" step="any" min="0" inputmode="decimal"></div>
+      <div class="f c2"><label for="cMon">Moneda</label><select class="field" id="cMon"><option value="Q">Quetzales (Q)</option><option value="$">Dólares ($)</option><option value="€">Euros (€)</option></select></div>
+      <div class="f c2"><label for="cUnit">Valor de 1 unidad</label><input class="field num" id="cUnit" type="number" step="any" min="0" inputmode="decimal" placeholder="Opcional"></div>
+      <div class="f c6"><span class="flabel">Ligas para el buscador</span><div class="chips" id="leagueChips"></div></div>
+      <div class="f c6"><label class="chip" style="width:fit-content"><input type="checkbox" id="cAuto"> Cerrar apuestas solas con los resultados de ESPN</label></div>
+    </div>
+    <div class="f">
+      <span class="flabel">Respaldo e importación</span>
+      <div class="actions">
+        <button class="btn" type="button" id="btnExportCsv">Descargar CSV</button>
+        <button class="btn" type="button" id="btnExportJson">Descargar respaldo (JSON)</button>
+        <label class="btn" for="fileImport" style="cursor:pointer">Importar CSV o JSON</label>
+        <input type="file" id="fileImport" accept=".csv,.json,text/csv,application/json" hidden>
+      </div>
+      <p class="note">El CSV que copiaste de la versión de Claude se puede importar aquí.</p>
+    </div>
+    <div class="modal-f">
+      <button class="btn" type="button" id="btnLogout" hidden>Cerrar sesión</button>
+      <span style="flex:1"></span>
+      <button class="btn" type="button" data-close>Cancelar</button>
+      <button class="btn primary" type="submit">Guardar</button>
+    </div>
+  </form>
+</div>
+
+<!-- Modal: confirmar -->
+<div class="overlay" id="ovConfirm" role="dialog" aria-modal="true" aria-labelledby="cfTitle">
+  <div class="modal sm">
+    <div class="modal-h"><h2 id="cfTitle">¿Eliminar?</h2><button class="x" type="button" data-close aria-label="Cerrar">×</button></div>
+    <p id="cfMsg" class="note"></p>
+    <div class="modal-f">
+      <button class="btn" type="button" data-close>Cancelar</button>
+      <button class="btn danger" type="button" id="cfOk">Eliminar</button>
+    </div>
+  </div>
+</div>
+
+<datalist id="dlDeporte"></datalist>
+<datalist id="dlCasa"></datalist>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="settle.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
