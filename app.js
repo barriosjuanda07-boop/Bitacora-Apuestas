@@ -191,28 +191,34 @@ function parseComp(comp, L, fallback) {
     date: (comp && comp.date) || (fallback && fallback.date), home: team(H), away: team(A),
     state: st.state, completed: !!st.completed, detail: st.shortDetail || st.detail || st.description || "" };
 }
+// partidos.json lo genera GitHub Actions cada 15 min (ESPN no permite CORS desde el navegador).
+let feed = null, feedT = 0;
+async function loadFeed(force) {
+  if (feed && !force && Date.now() - feedT < 120000) return feed;
+  const r = await fetch("partidos.json?t=" + Date.now(), { cache: "no-store" });
+  if (!r.ok) throw new Error(r.status === 404 ? "todavía no hay partidos descargados" : "error " + r.status);
+  feed = await r.json(); feedT = Date.now();
+  return feed;
+}
+const agoTxt = iso => { const m = Math.round((Date.now() - new Date(iso)) / 60000); return m < 1 ? "hace un momento" : m < 60 ? `hace ${m} min` : `hace ${Math.round(m / 60)} h`; };
 async function searchMatches(q) {
   const nq = norm(q);
-  const from = new Date(); from.setDate(from.getDate() - 3);
-  const to = new Date(); to.setDate(to.getDate() + 10);
-  const range = ymd(from) + "-" + ymd(to);
-  const ligas = (config.ligas && config.ligas.length ? config.ligas : LEAGUES.filter(l => l.on).map(l => l.k)).map(leagueBy).filter(Boolean);
-  let fails = 0;
-  const all = await Promise.all(ligas.map(async L => {
-    try {
-      const d = await getJSON(`${ESPN}/${L.sport}/${L.k}/scoreboard?dates=${range}&limit=400`);
-      return (d.events || []).map(ev => parseComp(ev.competitions && ev.competitions[0], L, ev)).filter(Boolean);
-    } catch { fails++; return []; }
-  }));
-  const hits = all.flat().filter(m => [m.home, m.away].some(t => [t.name, t.short, t.abbr, t.loc].some(x => norm(x).includes(nq))));
+  let f;
+  try { f = await loadFeed(); } catch (e) { return { hits: [], failed: true, why: e.message }; }
+  const on = new Set(config.ligas && config.ligas.length ? config.ligas : LEAGUES.filter(l => l.on).map(l => l.k));
+  const hits = (f.eventos || []).filter(m => on.has(m.league) && [m.home, m.away].some(t => [t.name, t.short, t.abbr, t.loc].some(x => norm(x).includes(nq))));
   hits.sort((a, b) => {
     const now = Date.now(), da = Math.abs(new Date(a.date) - now), db = Math.abs(new Date(b.date) - now);
     const pa = a.state === "pre" || a.state === "in" ? 0 : 1, pb = b.state === "pre" || b.state === "in" ? 0 : 1;
     return pa - pb || da - db;
   });
-  return { hits: hits.slice(0, 25), failed: fails === ligas.length && ligas.length > 0 };
+  return { hits: hits.slice(0, 25), failed: false, updated: f.actualizado };
 }
 async function fetchResult(espn) {
+  const f = await loadFeed();
+  const m = (f.eventos || []).find(e => e.id === String(espn.id));
+  if (m) return m;
+  // Partido más viejo que la ventana del archivo: intento directo (puede fallar por CORS).
   const L = leagueBy(espn.league) || { k: espn.league, sport: espn.sport, name: espn.leagueName || "", dep: "" };
   const d = await getJSON(`${ESPN}/${espn.sport}/${espn.league}/summary?event=${espn.id}`, 60000);
   const comp = d && d.header && d.header.competitions && d.header.competitions[0];
@@ -233,6 +239,7 @@ async function checkResults(manual) {
   const now = Date.now();
   const todo = bets.filter(b => b.estado === "pendiente" && b.espn && b.espn.id && (!b.espn.date || new Date(b.espn.date).getTime() <= now + 60000));
   let closed = 0, errors = 0;
+  if (todo.length) { try { await loadFeed(true); } catch { errors++; } }
   for (const b of todo) {
     try {
       const m = await fetchResult(b.espn);
@@ -249,13 +256,13 @@ async function checkResults(manual) {
       } else if (m.state === "post") {
         live[b.id] = { detail: m.detail || "Finalizado", h: m.home.score, a: m.away.score };
       }
-      await sleep(250);
+      await sleep(30);
     } catch { errors++; }
   }
   checking = false;
   btn.disabled = false; btn.textContent = "Revisar resultados";
   if (closed) toast(`${closed} apuesta${closed > 1 ? "s" : ""} cerrada${closed > 1 ? "s" : ""} con el resultado final`);
-  else if (manual) toast(errors ? "No se pudo conectar con ESPN. Intenta en un momento." : todo.length ? "Todavía no hay resultados finales nuevos" : "No hay apuestas pendientes vinculadas a un partido");
+  else if (manual) toast(errors ? "No se pudieron revisar algunos partidos. Intenta en un momento." : todo.length ? "Todavía no hay resultados finales nuevos" : "No hay apuestas pendientes vinculadas a un partido");
   renderHist(bets);
 }
 
@@ -464,12 +471,13 @@ $("#qMatch").addEventListener("input", () => {
   qTimer = setTimeout(async () => {
     const my = ++qSeq;
     try {
-      const { hits, failed } = await searchMatches(q);
+      const { hits, failed, why, updated } = await searchMatches(q);
       if (my !== qSeq) return;
-      if (failed) { $("#results").innerHTML = '<div class="res-msg">No se pudo conectar con ESPN. Revisa tu internet o llena el partido a mano.</div>'; return; }
-      if (!hits.length) { $("#results").innerHTML = `<div class="res-msg">No encontré partidos de “${esc(q)}” en las ligas activas. Prueba otro nombre (en inglés a veces funciona mejor: “Bayern”, “Inter”), activa más ligas en Ajustes o llénalo a mano.</div>`; return; }
+      if (failed) { $("#results").innerHTML = `<div class="res-msg">No se pudieron cargar los partidos (${esc(why || "sin conexión")}). Llena el partido a mano por ahora.</div>`; return; }
+      const upd = updated ? `<div class="res-msg" style="padding:6px 12px;font-size:12px">Datos de ESPN actualizados ${esc(agoTxt(updated))}</div>` : "";
+      if (!hits.length) { $("#results").innerHTML = `<div class="res-msg">No encontré partidos de “${esc(q)}” en las ligas activas. Prueba otro nombre (en inglés a veces funciona mejor: “Bayern”, “Inter”), activa más ligas en Ajustes o llénalo a mano.</div>` + upd; return; }
       window.__hits = hits;
-      $("#results").innerHTML = hits.map((m, i) => {
+      $("#results").innerHTML = upd + hits.map((m, i) => {
         const st = m.state === "in" ? `<span class="st in">En vivo · ${esc(m.home.score)}-${esc(m.away.score)}</span>` : m.state === "post" ? `<span class="st">Final · ${esc(m.home.score)}-${esc(m.away.score)}</span>` : `<span class="st">${esc(fmtWhen(m.date))}</span>`;
         return `<button type="button" class="res" role="option" data-hit="${i}"><span class="teams">${logo(m.home)}${esc(m.home.name)} <span style="color:var(--muted)">vs</span> ${logo(m.away)}${esc(m.away.name)}</span>${st}<span class="meta">${esc(m.leagueName)}</span></button>`;
       }).join("");

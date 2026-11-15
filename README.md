@@ -6,12 +6,12 @@ Registro personal de apuestas deportivas: bankroll, ROI, acierto, rachas, caída
 
 ## Cómo funciona
 
-- **Buscador de partidos:** al registrar una apuesta, escribe un equipo y elige el partido. Busca de 3 días atrás a 10 días adelante en las ligas activas (se eligen en Ajustes).
-- **Cierre automático:** mientras la página está abierta revisa cada 3 minutos (y cada vez que vuelves a la pestaña) las apuestas pendientes vinculadas a un partido. Se cierran solos estos mercados:
+- **Buscador de partidos:** al registrar una apuesta, escribe un equipo y elige el partido. Busca de 4 días atrás a 10 días adelante en las ligas activas (se eligen en Ajustes).
+- **Cierre automático:** mientras la página está abierta revisa cada 3 minutos el último `partidos.json` (y cada vez que vuelves a la pestaña) las apuestas pendientes vinculadas a un partido. Se cierran solos estos mercados:
   - Ganador (1X2 / moneyline), doble oportunidad, más/menos, hándicap/spread (incluye líneas asiáticas de cuarto: medio ganada / medio perdida) y ambos anotan.
   - Las apuestas de jugador, córners, tarjetas y combinadas se marcan a mano, pero el marcador final se guarda solo.
   - En fútbol, el marcador de ESPN de un partido de copa con prórroga incluye los goles del tiempo extra. Revisa esas apuestas si tu casa paga a 90 minutos.
-- **Datos de ESPN:** es la API pública no oficial de ESPN (sin clave). Puede cambiar sin aviso; si deja de responder, la bitácora sigue funcionando y solo pierdes el buscador y el cierre automático.
+- **Datos de ESPN:** ESPN no deja que una página web consulte su API desde el navegador (CORS). Por eso un GitHub Action (`.github/workflows/partidos.yml`) corre `scripts/fetch_espn.py` cada 15 minutos y guarda `partidos.json` en el repo; la página lee ese archivo. Los marcadores pueden tener hasta ~15-20 min de retraso. Para forzar una actualización: pestaña **Actions → Actualizar partidos → Run workflow**. Es la API pública no oficial de ESPN (sin clave). Puede cambiar sin aviso; si deja de responder, la bitácora sigue funcionando y solo pierdes el buscador y el cierre automático.
 
 ## Activar la sincronización (Firebase)
 
