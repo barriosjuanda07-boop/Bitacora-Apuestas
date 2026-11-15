@@ -1,26 +1,25 @@
 # Bitácora de Apuestas
 
-Registro personal de apuestas deportivas: bankroll, ROI, acierto, rachas, caída máxima y desgloses por deporte y mercado. Busca partidos en ESPN y cierra sola las apuestas pendientes cuando termina el partido.
+Registro personal de apuestas deportivas. Escribes el partido, tu apuesta, la cuota y el monto; la página calcula la ganancia posible y, cuando marcas el resultado, actualiza balance, ROI, acierto, rachas, caída máxima y desgloses por deporte y casa.
 
 **Página:** https://barriosjuanda07-boop.github.io/Bitacora-Apuestas/
 
-## Cómo funciona
+## Uso
 
-- **Buscador de partidos:** al registrar una apuesta, escribe un equipo y elige el partido. Busca de 4 días atrás a 10 días adelante en las ligas activas (se eligen en Ajustes).
-- **Cierre automático:** mientras la página está abierta revisa cada 3 minutos el último `partidos.json` (y cada vez que vuelves a la pestaña) las apuestas pendientes vinculadas a un partido. Se cierran solos estos mercados:
-  - Ganador (1X2 / moneyline), doble oportunidad, más/menos, hándicap/spread (incluye líneas asiáticas de cuarto: medio ganada / medio perdida) y ambos anotan.
-  - Las apuestas de jugador, córners, tarjetas y combinadas se marcan a mano, pero el marcador final se guarda solo.
-  - En fútbol, el marcador de ESPN de un partido de copa con prórroga incluye los goles del tiempo extra. Revisa esas apuestas si tu casa paga a 90 minutos.
-- **Datos de ESPN:** ESPN no deja que una página web consulte su API desde el navegador (CORS). Por eso un GitHub Action (`.github/workflows/partidos.yml`) corre `scripts/fetch_espn.py` cada 15 minutos y guarda `partidos.json` en el repo; la página lee ese archivo. Los marcadores pueden tener hasta ~15-20 min de retraso. Para forzar una actualización: pestaña **Actions → Actualizar partidos → Run workflow**. Es la API pública no oficial de ESPN (sin clave). Puede cambiar sin aviso; si deja de responder, la bitácora sigue funcionando y solo pierdes el buscador y el cierre automático.
+- **+ Nueva apuesta** (o la tecla **N**): partido, tu apuesta (por ejemplo, "Alcaraz −1.5 sets"), cuota (decimal o americana) y monto.
+- En el historial, las pendientes tienen botones **Ganó / Perdió**. Para nula, cash out, medio ganada o medio perdida, usa **Editar**.
+- **Ajustes:** bankroll inicial, moneda, valor de una unidad, descarga de CSV y respaldo JSON, e importación.
 
-## Activar la sincronización (Firebase)
+## Dónde se guardan los datos
 
-Sin configurar, los datos se guardan solo en el navegador. Para tener el mismo historial en el celular y la compu:
+Sin configurar nada, en el navegador donde abres la página: cada dispositivo tiene su propio historial. Descarga un respaldo de vez en cuando desde Ajustes.
 
-1. Entra a https://console.firebase.google.com → **Crear un proyecto** (nombre: `bitacora-apuestas`, puedes desactivar Google Analytics).
-2. **Authentication → Comenzar → Google → Habilitar** → elige tu correo de asistencia → Guardar.
+### Sincronizar celular y computadora (Firebase, opcional)
+
+1. https://console.firebase.google.com → **Crear un proyecto** (puedes desactivar Google Analytics).
+2. **Authentication → Comenzar → Google → Habilitar** → Guardar.
 3. **Authentication → Configuración → Dominios autorizados → Agregar dominio:** `barriosjuanda07-boop.github.io`
-4. **Firestore Database → Crear base de datos** → ubicación `nam5` (o la más cercana) → **Modo de producción**.
+4. **Firestore Database → Crear base de datos → Modo de producción**.
 5. En **Firestore → Reglas**, pega esto y publica:
 
    ```
@@ -34,14 +33,14 @@ Sin configurar, los datos se guardan solo en el navegador. Para tener el mismo h
    }
    ```
 
-6. **Configuración del proyecto (ícono de engrane) → Tus apps → Web (`</>`)** → registra la app → copia el objeto `firebaseConfig`.
-7. Pega ese objeto en `config.js` (reemplazando el `null`), o mándaselo a Claude para que lo actualice.
+6. **Configuración del proyecto → Tus apps → Web (`</>`)** → registra la app → copia `firebaseConfig`.
+7. Pégalo en `config.js` en lugar del `null`.
 
-La `apiKey` de Firebase no es secreta: identifica el proyecto. Lo que protege tus datos son las reglas del paso 5, que solo dejan leer y escribir a tu propia cuenta.
+La `apiKey` de Firebase no es secreta; tus datos los protegen las reglas del paso 5.
 
 ## Archivos
 
 - `index.html`: estructura y estilos.
-- `app.js`: lógica de la página, ESPN y almacenamiento.
-- `settle.js`: cálculo de ganancias y liquidación de mercados (funciones puras).
+- `app.js`: lógica de la página y almacenamiento.
+- `settle.js`: cálculo de ganancia/pérdida.
 - `config.js`: configuración de Firebase.

@@ -4,39 +4,14 @@ const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const { pl, settle } = window.Settle;
+const { pl } = window.Settle;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const clean = o => JSON.parse(JSON.stringify(o)); // Firestore no acepta undefined
 
-/* ---------- Ligas de ESPN ---------- */
-const LEAGUES = [
-  { k: "eng.1", sport: "soccer", name: "Premier League", dep: "Fútbol", on: true },
-  { k: "esp.1", sport: "soccer", name: "LaLiga", dep: "Fútbol", on: true },
-  { k: "ita.1", sport: "soccer", name: "Serie A", dep: "Fútbol", on: true },
-  { k: "ger.1", sport: "soccer", name: "Bundesliga", dep: "Fútbol", on: true },
-  { k: "fra.1", sport: "soccer", name: "Ligue 1", dep: "Fútbol", on: true },
-  { k: "uefa.champions", sport: "soccer", name: "Champions League", dep: "Fútbol", on: true },
-  { k: "uefa.europa", sport: "soccer", name: "Europa League", dep: "Fútbol", on: true },
-  { k: "mex.1", sport: "soccer", name: "Liga MX", dep: "Fútbol", on: true },
-  { k: "usa.1", sport: "soccer", name: "MLS", dep: "Fútbol", on: false },
-  { k: "por.1", sport: "soccer", name: "Liga Portugal", dep: "Fútbol", on: false },
-  { k: "ned.1", sport: "soccer", name: "Eredivisie", dep: "Fútbol", on: false },
-  { k: "conmebol.libertadores", sport: "soccer", name: "Libertadores", dep: "Fútbol", on: false },
-  { k: "concacaf.champions", sport: "soccer", name: "Concachampions", dep: "Fútbol", on: false },
-  { k: "nba", sport: "basketball", name: "NBA", dep: "Básquet", on: true },
-  { k: "nfl", sport: "football", name: "NFL", dep: "Fútbol americano", on: true },
-  { k: "mlb", sport: "baseball", name: "MLB", dep: "Béisbol", on: true },
-  { k: "nhl", sport: "hockey", name: "NHL", dep: "Hockey", on: false },
-  { k: "college-football", sport: "football", name: "NCAA Football", dep: "Fútbol americano", on: false },
-];
-const leagueBy = k => LEAGUES.find(l => l.k === k);
-const ESPN = "https://site.api.espn.com/apis/site/v2/sports";
-
 /* ---------- Estado ---------- */
 let bets = [];
-let config = { bankroll: 1000, moneda: "Q", unidad: 0, ligas: LEAGUES.filter(l => l.on).map(l => l.k), auto: true };
-let period = "todo", showN = 25, editingId = null, store = null, linked = null;
-const live = {}; // id de apuesta → {detail, h, a}
+let config = { bankroll: 1000, moneda: "Q", unidad: 0 };
+let period = "todo", showN = 25, editingId = null, store = null;
 
 /* ---------- Almacenamiento ---------- */
 const LS_KEY = "bitacora-apuestas-v1";
@@ -78,7 +53,6 @@ function onData(list, cfg) {
   bets = list;
   if (cfg) config = { ...config, ...cfg };
   render();
-  scheduleCheck();
 }
 
 function initStore() {
@@ -140,7 +114,6 @@ function offerMigration(cloudList) {
 /* ---------- Utilidades ---------- */
 const localISO = d => { d = new Date(d); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
 const today = () => localISO(new Date());
-const ymd = d => localISO(d).replace(/-/g, "");
 const isClosed = b => b.estado && b.estado !== "pendiente";
 const byDateAsc = (a, b) => (a.fecha || "").localeCompare(b.fecha || "") || (a.creado || 0) - (b.creado || 0);
 const byDateDesc = (a, b) => byDateAsc(b, a);
@@ -164,107 +137,10 @@ const pct = (n, signed) => (isFinite(n) ? ((signed && n > 0 ? "+" : "") + (n * 1
 const cls = n => n > 0.004 ? "pos" : n < -0.004 ? "neg" : "";
 const units = n => config.unidad > 0 ? ((n > 0 ? "+" : "") + (n / config.unidad).toFixed(2).replace("-", "−") + " u") : null;
 const fmtDate = f => { if (!f) return "—"; const [y, m, d] = f.split("-"); return `${d}/${m}/${y.slice(2)}`; };
-const fmtWhen = iso => { try { return new Date(iso).toLocaleString("es-GT", { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }); } catch { return iso; } };
+const _unused = iso => { try { return new Date(iso).toLocaleString("es-GT", { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }); } catch { return iso; } };
 const estadoTxt = { pendiente: "Pendiente", ganada: "Ganada", perdida: "Perdida", nula: "Nula", cashout: "Cash out", medio_ganada: "Medio ganada", medio_perdida: "Medio perdida" };
-const mercadoTxt = { ganador: "Ganador", doble: "Doble oportunidad", total: "Más / menos", handicap: "Hándicap", btts: "Ambos anotan", otro: "Otro" };
 const isWinState = s => s === "ganada" || s === "medio_ganada";
 const isLossState = s => s === "perdida" || s === "medio_perdida";
-
-/* ---------- ESPN ---------- */
-const cache = new Map();
-async function getJSON(url, ttl = 600000) {
-  const c = cache.get(url);
-  if (c && Date.now() - c.t < ttl) return c.v;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error("ESPN respondió " + r.status);
-  const v = await r.json();
-  cache.set(url, { t: Date.now(), v });
-  return v;
-}
-function parseComp(comp, L, fallback) {
-  const cs = (comp && comp.competitors) || [];
-  const H = cs.find(c => c.homeAway === "home") || cs[0], A = cs.find(c => c.homeAway === "away") || cs[1];
-  if (!H || !A) return null;
-  const team = c => { const t = c.team || {}; return { name: t.displayName || t.name || "", short: t.shortDisplayName || t.name || "", abbr: t.abbreviation || "", loc: t.location || "", logo: t.logo || (t.logos && t.logos[0] && t.logos[0].href) || "", score: c.score && typeof c.score === "object" ? c.score.displayValue : c.score }; };
-  const st = ((comp && comp.status) || (fallback && fallback.status) || {}).type || {};
-  return { id: String((fallback && fallback.id) || comp.id), sport: L.sport, league: L.k, leagueName: L.name, dep: L.dep,
-    date: (comp && comp.date) || (fallback && fallback.date), home: team(H), away: team(A),
-    state: st.state, completed: !!st.completed, detail: st.shortDetail || st.detail || st.description || "" };
-}
-// partidos.json lo genera GitHub Actions cada 15 min (ESPN no permite CORS desde el navegador).
-let feed = null, feedT = 0;
-async function loadFeed(force) {
-  if (feed && !force && Date.now() - feedT < 120000) return feed;
-  const r = await fetch("partidos.json?t=" + Date.now(), { cache: "no-store" });
-  if (!r.ok) throw new Error(r.status === 404 ? "todavía no hay partidos descargados" : "error " + r.status);
-  feed = await r.json(); feedT = Date.now();
-  return feed;
-}
-const agoTxt = iso => { const m = Math.round((Date.now() - new Date(iso)) / 60000); return m < 1 ? "hace un momento" : m < 60 ? `hace ${m} min` : `hace ${Math.round(m / 60)} h`; };
-async function searchMatches(q) {
-  const nq = norm(q);
-  let f;
-  try { f = await loadFeed(); } catch (e) { return { hits: [], failed: true, why: e.message }; }
-  const on = new Set(config.ligas && config.ligas.length ? config.ligas : LEAGUES.filter(l => l.on).map(l => l.k));
-  const hits = (f.eventos || []).filter(m => on.has(m.league) && [m.home, m.away].some(t => [t.name, t.short, t.abbr, t.loc].some(x => norm(x).includes(nq))));
-  hits.sort((a, b) => {
-    const now = Date.now(), da = Math.abs(new Date(a.date) - now), db = Math.abs(new Date(b.date) - now);
-    const pa = a.state === "pre" || a.state === "in" ? 0 : 1, pb = b.state === "pre" || b.state === "in" ? 0 : 1;
-    return pa - pb || da - db;
-  });
-  return { hits: hits.slice(0, 25), failed: false, updated: f.actualizado };
-}
-async function fetchResult(espn) {
-  const f = await loadFeed();
-  const m = (f.eventos || []).find(e => e.id === String(espn.id));
-  if (m) return m;
-  // Partido más viejo que la ventana del archivo: intento directo (puede fallar por CORS).
-  const L = leagueBy(espn.league) || { k: espn.league, sport: espn.sport, name: espn.leagueName || "", dep: "" };
-  const d = await getJSON(`${ESPN}/${espn.sport}/${espn.league}/summary?event=${espn.id}`, 60000);
-  const comp = d && d.header && d.header.competitions && d.header.competitions[0];
-  return comp ? parseComp(comp, L, { id: espn.id, date: comp.date }) : null;
-}
-
-/* ---------- Cierre automático ---------- */
-let checking = false, checkTimer = null;
-function scheduleCheck() {
-  if (checkTimer) return;
-  checkTimer = setTimeout(async function loop() { await checkResults(false); checkTimer = setTimeout(loop, 180000); }, 1500);
-}
-async function checkResults(manual) {
-  if (checking || !store) return;
-  if (!config.auto && !manual) return;
-  checking = true;
-  const btn = $("#btnCheck"); btn.disabled = true; btn.textContent = "Revisando…";
-  const now = Date.now();
-  const todo = bets.filter(b => b.estado === "pendiente" && b.espn && b.espn.id && (!b.espn.date || new Date(b.espn.date).getTime() <= now + 60000));
-  let closed = 0, errors = 0;
-  if (todo.length) { try { await loadFeed(true); } catch { errors++; } }
-  for (const b of todo) {
-    try {
-      const m = await fetchResult(b.espn);
-      if (!m) continue;
-      const h = parseFloat(m.home.score), a = parseFloat(m.away.score);
-      if (m.completed && isFinite(h) && isFinite(a)) {
-        delete live[b.id];
-        const res = b.mercado && b.mercado !== "otro" && b.tipo !== "combinada" ? settle(b.mercado, b.pick, b.linea, h, a) : null;
-        const upd = { ...b, marcador: `${h}-${a}` };
-        if (res) { upd.estado = res; upd.auto = true; closed++; }
-        if (res || b.marcador !== upd.marcador) await store.saveBet(upd);
-      } else if (m.state === "in") {
-        live[b.id] = { detail: m.detail, h: m.home.score, a: m.away.score };
-      } else if (m.state === "post") {
-        live[b.id] = { detail: m.detail || "Finalizado", h: m.home.score, a: m.away.score };
-      }
-      await sleep(30);
-    } catch { errors++; }
-  }
-  checking = false;
-  btn.disabled = false; btn.textContent = "Revisar resultados";
-  if (closed) toast(`${closed} apuesta${closed > 1 ? "s" : ""} cerrada${closed > 1 ? "s" : ""} con el resultado final`);
-  else if (manual) toast(errors ? "No se pudieron revisar algunos partidos. Intenta en un momento." : todo.length ? "Todavía no hay resultados finales nuevos" : "No hay apuestas pendientes vinculadas a un partido");
-  renderHist(bets);
-}
 
 /* ---------- Estadísticas ---------- */
 function computeStats(list) {
@@ -371,11 +247,11 @@ function render() {
   ];
   $("#stats").innerHTML = rows.map(([k, v, s]) => `<div class="stat"><span class="k">${esc(k)}<small>${esc(s)}</small></span><span class="num">${v}</span></div>`).join("");
   $("#byDeporte").innerHTML = breakdown(list, b => b.deporte, "Deporte");
-  $("#byMercado").innerHTML = breakdown(list, b => mercadoTxt[b.mercado] || "Otro", "Mercado");
+  $("#byCasa").innerHTML = breakdown(list, b => b.casa, "Casa");
 
   const dep = uniq(all.map(b => b.deporte)), fd = $("#fDeporte"), cur = fd.value;
   fd.innerHTML = '<option value="">Todos los deportes</option>' + dep.map(d => `<option${d === cur ? " selected" : ""}>${esc(d)}</option>`).join("");
-  $("#dlDeporte").innerHTML = uniq(dep.concat(["Fútbol", "Básquet", "Tenis", "Béisbol", "Fútbol americano", "Hockey", "MMA / UFC", "eSports"])).map(d => `<option value="${esc(d)}">`).join("");
+  $("#dlDeporte").innerHTML = uniq(dep.concat(["Tenis ATP", "Tenis WTA", "Tenis Challenger", "Fútbol", "NFL", "Básquet", "Béisbol"])).map(d => `<option value="${esc(d)}">`).join("");
   $("#dlCasa").innerHTML = uniq(all.map(b => b.casa)).map(d => `<option value="${esc(d)}">`).join("");
   renderHist(all); drawBank(all); drawMonth(all);
 }
@@ -395,19 +271,19 @@ function renderHist(all) {
     (!q || norm([b.evento, b.seleccion, b.notas, b.casa, b.deporte].join(" ")).includes(q))).sort(byDateDesc);
   const box = $("#hist");
   if (!all.length) {
-    box.innerHTML = `<div class="empty"><p>Aún no tienes apuestas. Pon tu bankroll en Ajustes y registra la primera: escribe un equipo en el buscador y elige el partido. Si ya tenías apuestas en la versión de Claude, impórtalas desde Ajustes.</p>
+    box.innerHTML = `<div class="empty"><p>Aún no tienes apuestas. Pon tu bankroll en Ajustes y registra la primera. Si ya tenías apuestas en la versión de Claude, impórtalas desde Ajustes.</p>
       <div class="actions" style="justify-content:center"><button class="btn primary" type="button" data-act="new">+ Registrar primera apuesta</button><button class="btn" type="button" data-act="cfg">Ajustes</button></div></div>`;
     return;
   }
   if (!rows.length) { box.innerHTML = '<div class="empty"><p>Ninguna apuesta coincide con los filtros o el periodo elegido.</p></div>'; return; }
   box.innerHTML = `<table class="hist"><thead><tr><th>Fecha</th><th>Evento</th><th>Deporte</th><th>Casa</th><th class="r">Cuota</th><th class="r">Monto</th><th>Estado</th><th class="r">G/P</th><th class="r">Acciones</th></tr></thead><tbody>` +
     rows.slice(0, showN).map(b => {
-      const v = pl(b), L = live[b.id];
+      const v = pl(b);
       const sub = [b.seleccion, b.tipo && b.tipo !== "simple" ? b.tipo : ""].filter(Boolean).join(" · ");
-      const extra = b.estado === "pendiente" && L ? `<span class="live">${esc(L.detail)} · ${esc(L.h)}-${esc(L.a)}</span>` : (b.marcador ? `<span>Marcador ${esc(b.marcador)}</span>` : (b.estado === "pendiente" && b.espn && b.espn.date ? `<span>${esc(fmtWhen(b.espn.date))}</span>` : ""));
+      const extra = b.marcador ? `<span>Marcador ${esc(b.marcador)}</span>` : "";
       const quick = b.estado === "pendiente" ? `<button class="btn sm" type="button" data-act="win" data-id="${esc(b.id)}">Ganó</button><button class="btn sm" type="button" data-act="lose" data-id="${esc(b.id)}">Perdió</button>` : "";
       return `<tr><td class="num">${fmtDate(b.fecha)}</td>
-        <td class="ev"><b>${esc(b.evento)}${b.auto ? '<span class="tag auto">auto</span>' : ""}${b.espn && b.estado === "pendiente" ? '<span class="tag auto">ESPN</span>' : ""}</b><span>${esc(sub)}</span>${extra ? "<br>" + extra : ""}</td>
+        <td class="ev"><b>${esc(b.evento)}</b><span>${esc(sub)}</span>${extra ? "<br>" + extra : ""}</td>
         <td>${esc(b.deporte || "—")}</td><td>${esc(b.casa || "—")}</td>
         <td class="r num">${(+b.cuota || 0).toFixed(2)}</td><td class="r num">${esc(money(+b.monto || 0))}</td>
         <td><span class="pill p-${esc(b.estado)}">${estadoTxt[b.estado] || esc(b.estado)}</span></td>
@@ -428,85 +304,8 @@ document.addEventListener("keydown", e => {
   if ((e.key === "n" || e.key === "N") && !e.ctrlKey && !e.metaKey && !$$(".overlay.open").length && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && store) { e.preventDefault(); openBet(null); }
 });
 
-/* Mercados */
-function pickOptions() {
-  const m = $("#iMercado").value, soccer = linked ? linked.sport === "soccer" : /f[uú]tbol$/i.test($("#iDeporte").value.trim()) || !$("#iDeporte").value.trim();
-  const H = linked ? linked.home.short || linked.home.name : "Local", A = linked ? linked.away.short || linked.away.name : "Visitante";
-  const opts = {
-    ganador: [["home", H + " gana"]].concat(soccer ? [["draw", "Empate"]] : []).concat([["away", A + " gana"]]),
-    doble: [["1X", H + " o empate"], ["X2", A + " o empate"], ["12", H + " o " + A]],
-    total: [["over", "Más de"], ["under", "Menos de"]],
-    handicap: [["home", H], ["away", A]],
-    btts: [["si", "Sí, ambos anotan"], ["no", "No"]],
-    otro: [],
-  }[m];
-  const cur = $("#iPick").value;
-  $("#iPick").innerHTML = opts.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("");
-  if (opts.some(o => o[0] === cur)) $("#iPick").value = cur;
-  $("#pickBox").hidden = m === "otro";
-  $("#lineBox").hidden = !(m === "total" || m === "handicap");
-  $("#iLinea").placeholder = m === "handicap" ? "−1.5" : "2.5";
-}
-function autoSelText() {
-  const m = $("#iMercado").value; if (m === "otro") return;
-  const p = $("#iPick").selectedOptions[0], l = $("#iLinea").value;
-  let t = p ? p.textContent : "";
-  if (m === "total" && l !== "") t = `${t} ${l}`;
-  if (m === "handicap" && l !== "") t = `${t} ${+l > 0 ? "+" : ""}${l}`;
-  if (m === "btts") t = "Ambos anotan: " + ($("#iPick").value === "si" ? "Sí" : "No");
-  $("#iSel").value = t;
-}
-$("#iMercado").addEventListener("change", () => { pickOptions(); autoSelText(); updatePreview(); });
-$("#iPick").addEventListener("change", () => { autoSelText(); updatePreview(); });
-$("#iLinea").addEventListener("input", () => { autoSelText(); updatePreview(); });
-$("#iTipo").addEventListener("change", updatePreview);
-
-/* Buscador */
-let qTimer = null, qSeq = 0;
-$("#qMatch").addEventListener("input", () => {
-  clearTimeout(qTimer);
-  const q = $("#qMatch").value.trim();
-  if (q.length < 3) { $("#results").innerHTML = ""; return; }
-  $("#results").innerHTML = '<div class="res-msg">Buscando en ESPN…</div>';
-  qTimer = setTimeout(async () => {
-    const my = ++qSeq;
-    try {
-      const { hits, failed, why, updated } = await searchMatches(q);
-      if (my !== qSeq) return;
-      if (failed) { $("#results").innerHTML = `<div class="res-msg">No se pudieron cargar los partidos (${esc(why || "sin conexión")}). Llena el partido a mano por ahora.</div>`; return; }
-      const upd = updated ? `<div class="res-msg" style="padding:6px 12px;font-size:12px">Datos de ESPN actualizados ${esc(agoTxt(updated))}</div>` : "";
-      if (!hits.length) { $("#results").innerHTML = `<div class="res-msg">No encontré partidos de “${esc(q)}” en las ligas activas. Prueba otro nombre (en inglés a veces funciona mejor: “Bayern”, “Inter”), activa más ligas en Ajustes o llénalo a mano.</div>` + upd; return; }
-      window.__hits = hits;
-      $("#results").innerHTML = upd + hits.map((m, i) => {
-        const st = m.state === "in" ? `<span class="st in">En vivo · ${esc(m.home.score)}-${esc(m.away.score)}</span>` : m.state === "post" ? `<span class="st">Final · ${esc(m.home.score)}-${esc(m.away.score)}</span>` : `<span class="st">${esc(fmtWhen(m.date))}</span>`;
-        return `<button type="button" class="res" role="option" data-hit="${i}"><span class="teams">${logo(m.home)}${esc(m.home.name)} <span style="color:var(--muted)">vs</span> ${logo(m.away)}${esc(m.away.name)}</span>${st}<span class="meta">${esc(m.leagueName)}</span></button>`;
-      }).join("");
-    } catch { if (my === qSeq) $("#results").innerHTML = '<div class="res-msg">No se pudo conectar con ESPN.</div>'; }
-  }, 450);
-});
-const logo = t => t.logo ? `<img src="${esc(t.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : "";
-$("#results").addEventListener("click", e => {
-  const b = e.target.closest("[data-hit]"); if (!b) return;
-  const m = window.__hits[+b.dataset.hit]; if (!m) return;
-  linkMatch({ id: m.id, sport: m.sport, league: m.league, leagueName: m.leagueName, date: m.date, home: { name: m.home.name, short: m.home.short, logo: m.home.logo }, away: { name: m.away.name, short: m.away.short, logo: m.away.logo } });
-  $("#iEvento").value = `${m.home.name} vs ${m.away.name}`;
-  $("#iDeporte").value = m.dep;
-  $("#iFecha").value = localISO(m.date);
-  $("#results").innerHTML = ""; $("#qMatch").value = "";
-  pickOptions(); autoSelText(); updatePreview();
-  $("#iCuota").focus();
-});
-function linkMatch(m) {
-  linked = m;
-  const card = $("#matchCard");
-  if (!m) { card.hidden = true; $("#searchBox").hidden = false; return; }
-  card.innerHTML = `<div class="mt"><b>${logo(m.home)}${esc(m.home.name)} <span style="color:var(--muted)">vs</span> ${logo(m.away)}${esc(m.away.name)}</b><span>${esc(m.leagueName || "")} · ${esc(fmtWhen(m.date))} · se cierra sola al terminar</span></div><button class="btn sm" type="button" id="btnUnlink">Cambiar partido</button>`;
-  card.hidden = false; $("#searchBox").hidden = true;
-  $("#btnUnlink").addEventListener("click", () => { linkMatch(null); pickOptions(); $("#qMatch").focus(); });
-}
-
 function getEstado() { return (document.querySelector('input[name="estado"]:checked') || {}).value || "pendiente"; }
-function setEstado(v) { if (v === "medio_ganada" || v === "medio_perdida") v = v.replace("medio_", ""); const r = document.querySelector(`input[name="estado"][value="${v}"]`); if (r) r.checked = true; $("#cashBox").hidden = v !== "cashout"; }
+function setEstado(v) { const r = document.querySelector(`input[name="estado"][value="${v}"]`); if (r) r.checked = true; $("#cashBox").hidden = v !== "cashout"; }
 const decOdds = () => { const raw = +$("#iCuota").value; return $("#iFormato").value === "us" ? americanToDec(raw) : raw; };
 function updatePreview() {
   const c = decOdds(), m = +$("#iMonto").value, est = getEstado();
@@ -519,8 +318,6 @@ function updatePreview() {
     if (bal > 0) parts.push(`Riesgo <b class="num">${pct(m / bal)}</b> del balance`);
     if (config.unidad > 0) parts.push(`<b class="num">${(m / config.unidad).toFixed(2)} u</b>`);
   } else parts.push("Escribe la cuota y el monto para ver la ganancia posible.");
-  const mer = $("#iMercado").value;
-  if (linked && (mer === "otro" || $("#iTipo").value === "combinada")) parts.push("Este mercado se marca a mano; el marcador sí se guarda solo.");
   $("#preview").innerHTML = parts.join("");
 }
 ["#iCuota", "#iMonto", "#iFormato"].forEach(s => $(s).addEventListener("input", updatePreview));
@@ -543,46 +340,36 @@ function openBet(id) {
   $("#iMonto").value = b ? b.monto : "";
   $("#iCash").value = b && b.cashout != null ? b.cashout : "";
   $("#iNotas").value = b ? b.notas || "" : "";
-  $("#qMatch").value = ""; $("#results").innerHTML = "";
-  linkMatch(b && b.espn ? b.espn : null);
-  $("#iMercado").value = b ? b.mercado || "otro" : "ganador";
-  pickOptions();
-  if (b && b.pick) $("#iPick").value = b.pick;
-  $("#iLinea").value = b && b.linea != null ? b.linea : "";
   $("#iSel").value = b ? b.seleccion || "" : "";
-  if (!b) autoSelText();
   setEstado(b ? b.estado : "pendiente");
   $("#betErr").textContent = "";
   updatePreview();
   openOv("#ovBet");
-  if (!b) setTimeout(() => $("#qMatch").focus(), 30);
+  if (!b) setTimeout(() => $("#iEvento").focus(), 30);
 }
 $("#betForm").addEventListener("submit", async e => {
   e.preventDefault();
-  const cuota = decOdds(), monto = +$("#iMonto").value, est = getEstado(), mer = $("#iMercado").value;
+  const cuota = decOdds(), monto = +$("#iMonto").value, est = getEstado();
   const err = [];
-  if (!$("#iEvento").value.trim()) err.push("escribe el evento o búscalo arriba");
+  if (!$("#iEvento").value.trim()) err.push("escribe el partido");
+  if (!$("#iSel").value.trim()) err.push("escribe tu apuesta");
   if (!(cuota > 1)) err.push("la cuota decimal debe ser mayor que 1 (en americana usa, por ejemplo, −110 o +150)");
   if (!(monto > 0)) err.push("el monto debe ser mayor que 0");
   if (!$("#iFecha").value) err.push("elige una fecha");
-  if ((mer === "total" || mer === "handicap") && $("#iLinea").value === "") err.push("pon la línea del mercado");
   if (est === "cashout" && !($("#iCash").value !== "" && +$("#iCash").value >= 0)) err.push("indica cuánto recibiste en el cash out");
   if (err.length) { $("#betErr").textContent = "Falta corregir: " + err.join("; ") + "."; return; }
   const prev = editingId ? bets.find(x => x.id === editingId) : null;
-  let estado = est;
-  if (prev && (prev.estado === "medio_ganada" || prev.estado === "medio_perdida") && prev.estado.replace("medio_", "") === est) estado = prev.estado;
+  const estado = est;
   const b = {
     id: editingId || store.newId(), kind: "bet",
     fecha: $("#iFecha").value, deporte: $("#iDeporte").value.trim(), casa: $("#iCasa").value.trim(),
     evento: $("#iEvento").value.trim(), seleccion: $("#iSel").value.trim(), tipo: $("#iTipo").value,
-    mercado: mer, pick: mer === "otro" ? null : $("#iPick").value, linea: (mer === "total" || mer === "handicap") ? +$("#iLinea").value : null,
     cuota: +cuota.toFixed(4), monto, estado, cashout: est === "cashout" ? +$("#iCash").value : null,
-    notas: $("#iNotas").value.trim(), espn: linked || null,
-    marcador: prev ? prev.marcador || null : null, auto: prev && prev.estado === estado ? !!prev.auto : false,
+    notas: $("#iNotas").value.trim(), marcador: prev ? prev.marcador || null : null,
     creado: prev ? prev.creado || Date.now() : Date.now(),
   };
   $("#btnSave").disabled = true;
-  try { await store.saveBet(b); lastCasa = b.casa; closeOv($("#ovBet")); toast(prev ? "Apuesta actualizada" : "Apuesta registrada"); if (b.espn && b.estado === "pendiente") checkResults(false); }
+  try { await store.saveBet(b); lastCasa = b.casa; closeOv($("#ovBet")); toast(prev ? "Apuesta actualizada" : "Apuesta registrada"); }
   catch (x) { $("#betErr").textContent = writeErr(x); }
   finally { $("#btnSave").disabled = false; }
 });
@@ -608,16 +395,13 @@ function writeErr(x) {
 
 /* ---------- Ajustes ---------- */
 function openCfg() {
-  $("#cBank").value = config.bankroll; $("#cMon").value = config.moneda; $("#cUnit").value = config.unidad || ""; $("#cAuto").checked = config.auto !== false;
-  const on = new Set(config.ligas || []);
-  $("#leagueChips").innerHTML = LEAGUES.map(l => `<label class="chip"><input type="checkbox" value="${l.k}"${on.has(l.k) ? " checked" : ""}> ${esc(l.name)}</label>`).join("");
+  $("#cBank").value = config.bankroll; $("#cMon").value = config.moneda; $("#cUnit").value = config.unidad || "";
   openOv("#ovCfg");
 }
 $("#btnConfig").addEventListener("click", openCfg);
 $("#cfgForm").addEventListener("submit", async e => {
   e.preventDefault();
-  const c = { bankroll: Math.max(0, +$("#cBank").value || 0), moneda: $("#cMon").value, unidad: Math.max(0, +$("#cUnit").value || 0),
-    auto: $("#cAuto").checked, ligas: $$("#leagueChips input:checked").map(i => i.value) };
+  const c = { bankroll: Math.max(0, +$("#cBank").value || 0), moneda: $("#cMon").value, unidad: Math.max(0, +$("#cUnit").value || 0) };
   try { await store.saveConfig(c); config = { ...config, ...c }; closeOv($("#ovCfg")); render(); toast("Ajustes guardados"); } catch (x) { toast(writeErr(x)); }
 });
 
@@ -628,10 +412,10 @@ function download(name, text, type) {
   a.download = name; document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
-const HEAD = ["fecha", "deporte", "casa", "evento", "seleccion", "tipo", "mercado", "cuota", "monto", "estado", "cashout", "marcador", "ganancia", "notas"];
+const HEAD = ["fecha", "deporte", "casa", "evento", "seleccion", "tipo", "cuota", "monto", "estado", "cashout", "marcador", "ganancia", "notas"];
 $("#btnExportCsv").addEventListener("click", () => {
   const q = v => { const s = String(v ?? ""); return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const lines = [HEAD.join(",")].concat(bets.slice().sort(byDateAsc).map(b => [b.fecha, b.deporte, b.casa, b.evento, b.seleccion, b.tipo, b.mercado, b.cuota, b.monto, b.estado, b.cashout ?? "", b.marcador || "", pl(b).toFixed(2), b.notas].map(q).join(",")));
+  const lines = [HEAD.join(",")].concat(bets.slice().sort(byDateAsc).map(b => [b.fecha, b.deporte, b.casa, b.evento, b.seleccion, b.tipo, b.cuota, b.monto, b.estado, b.cashout ?? "", b.marcador || "", pl(b).toFixed(2), b.notas].map(q).join(",")));
   download(`apuestas-${today()}.csv`, "﻿" + lines.join("\n"), "text/csv;charset=utf-8");
 });
 $("#btnExportJson").addEventListener("click", () => download(`respaldo-apuestas-${today()}.json`, JSON.stringify({ config, bets }, null, 2), "application/json"));
@@ -661,7 +445,7 @@ $("#fileImport").addEventListener("change", async e => {
       list = rows.map(r => {
         const g = k => (ix(k) >= 0 ? r[ix(k)] : "") || "";
         return { fecha: g("fecha"), deporte: g("deporte"), casa: g("casa"), evento: g("evento"), seleccion: g("seleccion"), tipo: g("tipo") || "simple",
-          mercado: g("mercado") || "otro", cuota: +g("cuota"), monto: +g("monto"), estado: g("estado") || "pendiente", cashout: g("cashout") === "" ? null : +g("cashout"),
+          cuota: +g("cuota"), monto: +g("monto"), estado: g("estado") || "pendiente", cashout: g("cashout") === "" ? null : +g("cashout"),
           marcador: g("marcador") || null, notas: g("notas") };
       });
     }
@@ -690,15 +474,13 @@ document.addEventListener("click", async e => {
   else if (act === "win" || act === "lose") {
     const b = bets.find(x => x.id === id); if (!b) return;
     t.disabled = true;
-    try { await store.saveBet({ ...b, estado: act === "win" ? "ganada" : "perdida", auto: false }); toast(act === "win" ? `Ganada: ${money(b.monto * (b.cuota - 1), true)}` : `Perdida: ${money(-b.monto, true)}`); }
+    try { await store.saveBet({ ...b, estado: act === "win" ? "ganada" : "perdida" }); toast(act === "win" ? `Ganada: ${money(b.monto * (b.cuota - 1), true)}` : `Perdida: ${money(-b.monto, true)}`); }
     catch (x) { toast(writeErr(x)); t.disabled = false; }
   }
 });
 $$(".seg button").forEach(b => b.addEventListener("click", () => { period = b.dataset.period; $$(".seg button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); showN = 25; render(); }));
 ["#fSearch", "#fEstado", "#fDeporte"].forEach(s => $(s).addEventListener("input", () => { showN = 25; renderHist(bets); }));
 $("#btnNew").addEventListener("click", () => openBet(null));
-$("#btnCheck").addEventListener("click", () => checkResults(true));
-document.addEventListener("visibilitychange", () => { if (!document.hidden) checkResults(false); });
 
 let tT = null;
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(tT); tT = setTimeout(() => t.classList.remove("show"), 3200); }
