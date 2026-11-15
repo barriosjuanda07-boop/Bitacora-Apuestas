@@ -6,7 +6,7 @@ Registro personal de apuestas deportivas. Escribes el partido, tu apuesta, la cu
 
 ## Uso
 
-- **+ Nueva apuesta** (o la tecla **N**): partido, tu apuesta (por ejemplo, "Alcaraz −1.5 sets"), cuota (decimal o americana) y monto.
+- **+ Nueva apuesta** (o la tecla **N**): elige **Simple** (partido, tu apuesta —por ejemplo "Alcaraz −1.5 sets"—, cuota y monto) o **Combinada** (agrega las selecciones que quieras; si llenas la cuota de cada una, la cuota total se calcula sola).
 - En el historial, las pendientes tienen botones **Ganó / Perdió**. Para nula, cash out, medio ganada o medio perdida, usa **Editar**.
 - **Ajustes:** bankroll inicial, moneda, valor de una unidad, descarga de CSV y respaldo JSON, e importación.
 

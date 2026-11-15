@@ -126,6 +126,16 @@ td.r,th.r{text-align:right}
 .note{font-size:13px;color:var(--muted);margin:0}
 .note code{font-family:var(--font-num);font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
 
+.legs{display:flex;flex-direction:column;gap:8px}
+.leg{display:grid;grid-template-columns:24px 1.3fr 1fr 90px 34px;gap:8px;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}
+.leg .n{font-family:var(--font-num);color:var(--accent);font-size:13px;text-align:center}
+.leg .field{width:100%}
+.leg .rm{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:6px;height:34px;cursor:pointer;font-size:18px;line-height:1}
+.leg .rm:hover{color:var(--loss);border-color:#5a2f35}
+.legs-sum{font-size:12.5px;color:var(--muted)}
+.hist .legl{display:block;color:var(--muted);font-size:12.5px}
+.hist .legl i{font-style:normal;color:var(--accent);font-family:var(--font-num);margin-right:4px}
+@media (max-width:560px){.leg{grid-template-columns:20px 1fr 80px 34px}.leg .n{grid-row:1/3}.leg .ev{grid-row:1;grid-column:2/4}.leg .rm{grid-row:1;grid-column:4}.leg .sel{grid-row:2;grid-column:2/3}.leg .cu{grid-row:2;grid-column:3/5}}
 .gate{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
 .gate .modal{max-width:440px;text-align:left}
 
@@ -221,16 +231,28 @@ td.r,th.r{text-align:right}
   <form class="modal" id="betForm" novalidate autocomplete="off">
     <div class="modal-h"><h2 id="betTitle">Nueva apuesta</h2><button class="x" type="button" data-close aria-label="Cerrar">×</button></div>
 
+    <div class="f">
+      <span class="flabel">Tipo de apuesta</span>
+      <div class="states" id="iTipo">
+        <input type="radio" name="tipo" id="t1" value="simple" checked><label for="t1">Simple</label>
+        <input type="radio" name="tipo" id="t2" value="combinada"><label for="t2">Combinada (2 o más selecciones)</label>
+      </div>
+    </div>
+
     <div class="form">
       <div class="f c2"><label for="iFecha">Fecha</label><input class="field" id="iFecha" type="date" required></div>
       <div class="f c2"><label for="iDeporte">Deporte</label><input class="field" id="iDeporte" list="dlDeporte" placeholder="Tenis ATP"></div>
       <div class="f c2"><label for="iCasa">Casa de apuestas</label><input class="field" id="iCasa" list="dlCasa" placeholder="Bet365"></div>
-      <div class="f c6"><label for="iEvento">Partido</label><input class="field" id="iEvento" placeholder="Carlos Alcaraz vs Frances Tiafoe" required></div>
-      <div class="f c6"><label for="iSel">Tu apuesta</label><input class="field" id="iSel" placeholder="Alcaraz −1.5 sets" required></div>
+      <div class="f c6 only-simple"><label for="iEvento">Partido</label><input class="field" id="iEvento" placeholder="Carlos Alcaraz vs Frances Tiafoe"></div>
+      <div class="f c6 only-simple"><label for="iSel">Tu apuesta</label><input class="field" id="iSel" placeholder="Alcaraz −1.5 sets"></div>
 
-      <div class="f c2"><label for="iTipo">Tipo</label>
-        <select class="field" id="iTipo"><option value="simple">Simple</option><option value="combinada">Combinada (parlay)</option><option value="en vivo">En vivo</option></select></div>
-      <div class="f c2"><label for="iCuota">Cuota</label><input class="field num" id="iCuota" type="number" step="any" inputmode="decimal" placeholder="1.85" required></div>
+      <div class="f c6 only-combo" hidden>
+        <span class="flabel">Selecciones de la combinada</span>
+        <div class="legs" id="legs"></div>
+        <button class="btn" type="button" id="btnAddLeg" style="align-self:flex-start">+ Agregar selección</button>
+      </div>
+
+      <div class="f c2"><label for="iCuota" id="lblCuota">Cuota</label><input class="field num" id="iCuota" type="number" step="any" inputmode="decimal" placeholder="1.85" required></div>
       <div class="f c2"><label for="iFormato">Formato de cuota</label>
         <select class="field" id="iFormato"><option value="dec">Decimal (1.85)</option><option value="us">Americana (−118 / +150)</option></select></div>
       <div class="f c2"><label for="iMonto">Monto apostado</label><input class="field num" id="iMonto" type="number" step="any" min="0" inputmode="decimal" placeholder="100" required></div>

@@ -279,11 +279,12 @@ function renderHist(all) {
   box.innerHTML = `<table class="hist"><thead><tr><th>Fecha</th><th>Evento</th><th>Deporte</th><th>Casa</th><th class="r">Cuota</th><th class="r">Monto</th><th>Estado</th><th class="r">G/P</th><th class="r">Acciones</th></tr></thead><tbody>` +
     rows.slice(0, showN).map(b => {
       const v = pl(b);
-      const sub = [b.seleccion, b.tipo && b.tipo !== "simple" ? b.tipo : ""].filter(Boolean).join(" · ");
+      const sub = b.legs && b.legs.length ? "" : [b.seleccion, b.tipo && b.tipo !== "simple" ? b.tipo : ""].filter(Boolean).join(" · ");
+      const legHtml = b.legs && b.legs.length ? b.legs.map((l, i) => `<span class="legl"><i>${i + 1}</i>${esc(l.evento)} · ${esc(l.seleccion)}${l.cuota ? ` <span class="num">@${(+l.cuota).toFixed(2)}</span>` : ""}</span>`).join("") : "";
       const extra = b.marcador ? `<span>Marcador ${esc(b.marcador)}</span>` : "";
       const quick = b.estado === "pendiente" ? `<button class="btn sm" type="button" data-act="win" data-id="${esc(b.id)}">Ganó</button><button class="btn sm" type="button" data-act="lose" data-id="${esc(b.id)}">Perdió</button>` : "";
       return `<tr><td class="num">${fmtDate(b.fecha)}</td>
-        <td class="ev"><b>${esc(b.evento)}</b><span>${esc(sub)}</span>${extra ? "<br>" + extra : ""}</td>
+        <td class="ev"><b>${esc(b.evento)}</b><span>${esc(sub)}</span>${legHtml}${extra ? "<br>" + extra : ""}</td>
         <td>${esc(b.deporte || "—")}</td><td>${esc(b.casa || "—")}</td>
         <td class="r num">${(+b.cuota || 0).toFixed(2)}</td><td class="r num">${esc(money(+b.monto || 0))}</td>
         <td><span class="pill p-${esc(b.estado)}">${estadoTxt[b.estado] || esc(b.estado)}</span></td>
@@ -318,10 +319,50 @@ function updatePreview() {
     if (bal > 0) parts.push(`Riesgo <b class="num">${pct(m / bal)}</b> del balance`);
     if (config.unidad > 0) parts.push(`<b class="num">${(m / config.unidad).toFixed(2)} u</b>`);
   } else parts.push("Escribe la cuota y el monto para ver la ganancia posible.");
+  if (getTipo() === "combinada") { const n = readLegs().filter(l => l.evento || l.seleccion || l.cuota).length; parts.push(legsCuota() ? `${n} selecciones · cuota total = producto de las cuotas` : `${n} selecciones · llena la cuota de cada una para calcular la total, o escribe la total`); }
   $("#preview").innerHTML = parts.join("");
 }
 ["#iCuota", "#iMonto", "#iFormato"].forEach(s => $(s).addEventListener("input", updatePreview));
 $("#iEstado").addEventListener("change", updatePreview);
+
+/* Combinadas */
+const getTipo = () => (document.querySelector('input[name="tipo"]:checked') || {}).value || "simple";
+function setTipo(t) {
+  t = t === "combinada" ? "combinada" : "simple";
+  const r = document.querySelector(`input[name="tipo"][value="${t}"]`); if (r) r.checked = true;
+  $$(".only-simple").forEach(el => { el.hidden = t !== "simple"; });
+  $$(".only-combo").forEach(el => { el.hidden = t !== "combinada"; });
+  $("#lblCuota").textContent = t === "combinada" ? "Cuota total" : "Cuota";
+  if (t === "combinada") while ($$("#legs .leg").length < 2) addLeg();
+}
+function addLeg(l, focus) {
+  l = l || {};
+  const row = document.createElement("div"); row.className = "leg";
+  row.innerHTML = `<span class="n"></span><input class="field ev" placeholder="Partido" aria-label="Partido"><input class="field sel" placeholder="Tu selección" aria-label="Tu selección"><input class="field num cu" type="number" step="any" inputmode="decimal" placeholder="Cuota" aria-label="Cuota de la selección"><button type="button" class="rm" aria-label="Quitar selección" title="Quitar">×</button>`;
+  row.querySelector(".ev").value = l.evento || "";
+  row.querySelector(".sel").value = l.seleccion || "";
+  row.querySelector(".cu").value = l.cuota || "";
+  $("#legs").appendChild(row); renumber();
+  if (focus) row.querySelector(".ev").focus();
+}
+function renumber() { $$("#legs .leg").forEach((r, i) => { r.querySelector(".n").textContent = i + 1; }); }
+function readLegs() {
+  return $$("#legs .leg").map(r => ({ evento: r.querySelector(".ev").value.trim(), seleccion: r.querySelector(".sel").value.trim(), cuota: +r.querySelector(".cu").value || null }));
+}
+function legsCuota() {
+  const L = readLegs().filter(l => l.evento || l.seleccion || l.cuota);
+  if (L.length < 2 || L.some(l => !(l.cuota > 1))) return null;
+  return L.reduce((p, l) => p * l.cuota, 1);
+}
+function syncComboOdds() { const c = legsCuota(); if (c) { $("#iFormato").value = "dec"; $("#iCuota").value = c.toFixed(2); } updatePreview(); }
+$("#legs").addEventListener("input", e => { if (e.target.classList.contains("cu")) syncComboOdds(); });
+$("#legs").addEventListener("click", e => {
+  const b = e.target.closest(".rm"); if (!b) return;
+  if ($$("#legs .leg").length <= 2) { toast("Una combinada necesita al menos 2 selecciones. Si es una sola, elige Simple."); return; }
+  b.closest(".leg").remove(); renumber(); syncComboOdds();
+});
+$("#btnAddLeg").addEventListener("click", () => addLeg(null, true));
+$("#iTipo").addEventListener("change", () => { setTipo(getTipo()); updatePreview(); });
 
 let lastCasa = "";
 function openBet(id) {
@@ -334,7 +375,9 @@ function openBet(id) {
   $("#iDeporte").value = b ? b.deporte || "" : "";
   $("#iCasa").value = b ? b.casa || "" : lastCasa;
   $("#iEvento").value = b ? b.evento || "" : "";
-  $("#iTipo").value = b ? b.tipo || "simple" : "simple";
+  $("#legs").innerHTML = "";
+  (b && b.legs ? b.legs : []).forEach(l => addLeg(l));
+  setTipo(b ? b.tipo : "simple");
   $("#iFormato").value = "dec";
   $("#iCuota").value = b ? b.cuota : "";
   $("#iMonto").value = b ? b.monto : "";
@@ -345,14 +388,21 @@ function openBet(id) {
   $("#betErr").textContent = "";
   updatePreview();
   openOv("#ovBet");
-  if (!b) setTimeout(() => $("#iEvento").focus(), 30);
+  if (!b) setTimeout(() => (getTipo() === "combinada" ? $("#legs .ev") : $("#iEvento")).focus(), 30);
 }
 $("#betForm").addEventListener("submit", async e => {
   e.preventDefault();
   const cuota = decOdds(), monto = +$("#iMonto").value, est = getEstado();
   const err = [];
-  if (!$("#iEvento").value.trim()) err.push("escribe el partido");
-  if (!$("#iSel").value.trim()) err.push("escribe tu apuesta");
+  const tipo = getTipo();
+  const legs = tipo === "combinada" ? readLegs().filter(l => l.evento || l.seleccion || l.cuota) : null;
+  if (tipo === "simple") {
+    if (!$("#iEvento").value.trim()) err.push("escribe el partido");
+    if (!$("#iSel").value.trim()) err.push("escribe tu apuesta");
+  } else {
+    if (legs.length < 2) err.push("agrega al menos 2 selecciones");
+    if (legs.some(l => !l.evento || !l.seleccion)) err.push("cada selección necesita partido y apuesta");
+  }
   if (!(cuota > 1)) err.push("la cuota decimal debe ser mayor que 1 (en americana usa, por ejemplo, −110 o +150)");
   if (!(monto > 0)) err.push("el monto debe ser mayor que 0");
   if (!$("#iFecha").value) err.push("elige una fecha");
@@ -363,7 +413,9 @@ $("#betForm").addEventListener("submit", async e => {
   const b = {
     id: editingId || store.newId(), kind: "bet",
     fecha: $("#iFecha").value, deporte: $("#iDeporte").value.trim(), casa: $("#iCasa").value.trim(),
-    evento: $("#iEvento").value.trim(), seleccion: $("#iSel").value.trim(), tipo: $("#iTipo").value,
+    tipo, legs: legs || null,
+    evento: legs ? `Combinada de ${legs.length} selecciones` : $("#iEvento").value.trim(),
+    seleccion: legs ? legs.map(l => `${l.evento}: ${l.seleccion}${l.cuota ? " @" + l.cuota : ""}`).join(" | ") : $("#iSel").value.trim(),
     cuota: +cuota.toFixed(4), monto, estado, cashout: est === "cashout" ? +$("#iCash").value : null,
     notas: $("#iNotas").value.trim(), marcador: prev ? prev.marcador || null : null,
     creado: prev ? prev.creado || Date.now() : Date.now(),
