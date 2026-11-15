@@ -1,15 +1,10 @@
 // Configuración de Firebase (sincronización entre dispositivos).
-// Pega aquí el objeto firebaseConfig de tu proyecto (Firebase → Configuración del proyecto → Tus apps → Web).
-// Si lo dejas en null, la bitácora guarda los datos solo en este navegador.
-window.FIREBASE_CONFIG = null;
-
-/* Ejemplo:
+// La apiKey no es secreta: identifica el proyecto. Los datos los protegen las reglas de Firestore (ver README).
 window.FIREBASE_CONFIG = {
-  apiKey: "AIza...",
-  authDomain: "tu-proyecto.firebaseapp.com",
-  projectId: "tu-proyecto",
-  storageBucket: "tu-proyecto.appspot.com",
-  messagingSenderId: "1234567890",
-  appId: "1:1234567890:web:abc123"
+  apiKey: "AIzaSyBHBNBICZmUOFa-E-DNcvP1LYUqc-JNDjY",
+  authDomain: "bitacora-apuestas.firebaseapp.com",
+  projectId: "bitacora-apuestas",
+  storageBucket: "bitacora-apuestas.firebasestorage.app",
+  messagingSenderId: "914543306592",
+  appId: "1:914543306592:web:a45151024525fea35ae005"
 };
-*/
